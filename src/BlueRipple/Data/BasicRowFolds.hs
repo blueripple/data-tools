@@ -113,13 +113,14 @@ geoUnfoldRowFold :: forall gs hs ks cs ds f g rs rs' r .
                  -> (Double -> F.Record ds -> F.Record ds) -- how to re-weight data into component geographies
                  -> FL.Fold (F.Record ds) (F.Record ds) -- how to re-combine data
                  -> f (F.Record rs)
-                 -> K.StreamlyM (Either Text (F.FrameRec (hs V.++ ks V.++ ds)))
+                 -> K.Sem r (F.FrameRec (hs V.++ ks V.++ ds))
 geoUnfoldRowFold fixRow geoKeys geoExpand demoKeys datFields datFld applyWgt foldedDatFld rows = do
-  foldedToBaseGeo <- rowFold fixRow (\r -> geoKeys r F.<+> demoKeys r) datFields datFld rows
+  foldedToBaseGeo <- K.streamlyToKnit
+                     $ rowFold fixRow (\r -> geoKeys r F.<+> demoKeys r) datFields datFld rows
   let unpackRec r = fmap (fmap (\(wgt, gh) -> gh F.<+> F.rcast @ks r F.<+> applyWgt wgt (F.rcast @ds r))) $ geoExpand (F.rcast @gs r)
       geoFldE = MR.concatFoldM
                 $ MR.mapReduceFoldM
                  (MR.UnpackM unpackRec)
                  (MR.generalizeAssign $ FMR.assignKeysAndData @(hs V.++ ks) @ds)
                  (MR.generalizeReduce $ FMR.foldAndAddKey foldedDatFld)
-  FL.foldM geoFldE foldedToBaseGeo
+  K.knitEither $ FL.foldM geoFldE foldedToBaseGeo
