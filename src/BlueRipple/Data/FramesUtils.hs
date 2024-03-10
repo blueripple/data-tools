@@ -24,6 +24,8 @@ import qualified Control.Monad.ST as ST
 
 import qualified Data.Hashable as Hashable
 import qualified Data.Map.Strict as Map
+import qualified Data.Sequence as Seq
+import qualified Data.Vector as Vector
 
 import qualified Frames
 import qualified Frames.InCore
@@ -37,6 +39,8 @@ import qualified Streamly.Data.StreamK as StreamK
 import qualified Streamly.Data.Fold as Streamly.Fold
 import qualified Streamly.Internal.Data.Fold as Streamly.Fold
 import qualified Streamly.Data.Stream.Prelude as SP
+
+import qualified System.Random.MWC as MWC
 
 import qualified Data.HashTable.Class          as HashTable
 import qualified Data.HashTable.ST.Cuckoo      as HashTable.Cuckoo
@@ -367,3 +371,20 @@ fStreamlyMR_HT u a r = fStreamlyMRM_HT
                        (MapReduce.generalizeAssign a)
                        (MapReduce.generalizeReduce r)
 {-# INLINEABLE fStreamlyMR_HT #-}
+
+sampleFrame :: (Frames.InCore.RecVec rs, Prim.PrimMonad m) => Word32 -> Int -> Frames.FrameRec rs -> m (Frames.FrameRec rs)
+sampleFrame seed n rows = do
+  gen <- MWC.initialize (Vector.singleton seed)
+  Frames.toFrame <$> sample (Foldl.fold Foldl.list rows) n gen
+
+sample :: Prim.PrimMonad m => [a] -> Int -> MWC.Gen (Prim.PrimState m) -> m [a]
+sample ys size = go 0 (l - 1) (Seq.fromList ys) where
+    l = length ys
+    go !n !i xs g | n >= size = return $! (toList . Seq.drop (l - size)) xs
+                  | otherwise = do
+                      j <- MWC.uniformR (0, i) g
+                      let toI  = xs `Seq.index` j
+                          toJ  = xs `Seq.index` i
+                          next = (Seq.update i toI . Seq.update j toJ) xs
+                      go (n + 1) (i - 1) next g
+{-# INLINEABLE sample #-}
