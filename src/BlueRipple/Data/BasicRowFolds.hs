@@ -12,6 +12,7 @@ module BlueRipple.Data.BasicRowFolds
 where
 
 import qualified BlueRipple.Data.FramesUtils as BRF
+import qualified BlueRipple.Utilities.KnitUtils as BRK
 
 import qualified Control.Foldl as FL
 
@@ -102,7 +103,7 @@ geoUnfoldRowFold :: forall gs hs ks cs ds f g rs rs' r .
                     , FI.RecVec (hs V.++ ks V.++ ds)
                     , Foldable f
                     , Traversable g
-                    , K.KnitEffects r
+                    , BRK.KnitEffects r
                     )
                  => (F.Record rs -> g (F.Record rs')) -- Note that Maybe and Either are Traversable in the way that works here
                  -> (F.Record rs' -> F.Record gs) -- time and geographic keys

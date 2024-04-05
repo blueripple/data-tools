@@ -26,7 +26,8 @@ library
   hs-source-dirs: src
   ghc-options: -Wall -O2 -fno-warn-unused-top-binds -funbox-strict-fields
   build-depends:
-      aeson >= 2.1 && < 2.3
+      blueripple-post-tools
+    , aeson >= 2.1 && < 2.3
     , array >= 0.4 && < 0.6
     , cassava >= 0.5 && < 0.6
     , clock >= 0.8 && < 0.9
