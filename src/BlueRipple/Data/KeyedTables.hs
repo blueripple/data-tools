@@ -62,10 +62,11 @@ reKeyMap f t =
       af = BRK.AggF f
       rekeyF = BRK.aggFoldAll af (BRK.dataFoldCollapseBool FL.sum)
   in Map.fromList $ FL.fold rekeyF $ Map.toList t
+{-# INLINEABLE reKeyMap #-}
 
 keyF :: Eq k1 => (k2 -> [k1]) -> k2 -> k1  -> Bool
 keyF f k2 k1 = k1 `elem` f k2
-
+{-# INLINEABLE keyF #-}
 {-
 unNest :: (Array.Ix k1, Array.Ix k2, BRK.FiniteSet k1, BRK.FiniteSet k2)
        => (Array.Array k1 (Array.Array k2 x)) -> Array.Array (k1, k2) x
@@ -84,11 +85,13 @@ unNest (Table t) =
 -- And we can map it to the typed description of the table, for later.
 tableDescriptions :: Ord b => (b -> Map c Text) -> [b] -> Map b [Text]
 tableDescriptions describe bs = Map.fromList $ fmap (\b -> (b, Map.elems $ describe b)) bs
+{-# INLINEABLE tableDescriptions #-}
 
 allTableDescriptions :: (Ord b, BRK.FiniteSet d) => (b -> Map c Text) -> (d -> [b]) -> Map b [Text]
 allTableDescriptions describe fromType = Map.unions $ (tableDescriptions describe . fromType) <$> Set.toList BRK.elements
+{-# INLINEABLE allTableDescriptions #-}
 
-data TableRow a c = TableRow { prefix :: a, counts :: c}
+data TableRow a c = TableRow { prefix :: !a, counts :: !c}
 deriving stock instance (Show a, Show c) => Show (TableRow a c)
 deriving stock instance Functor (TableRow a)
 
@@ -100,6 +103,7 @@ parseTablesRow tableHeadersByName r = TableRow <$> CSV.parseNamedRecord r <*> tr
   lookupOne r' t = fmap (t,) $ CSV.lookup r' $ encodeUtf8 t
   parseTable :: CSV.NamedRecord -> [Text] -> CSV.Parser (Map Text Int)
   parseTable r' headers = Map.fromList <$> traverse (lookupOne r') headers
+{-# INLINEABLE parseTablesRow #-}
 
 decodeCSVTables :: forall a b.(CSV.FromNamedRecord a)
                 => Map b [Text]
@@ -107,12 +111,14 @@ decodeCSVTables :: forall a b.(CSV.FromNamedRecord a)
                 -> Either Text (CSV.Header, Vec.Vector (RawTablesRow a b))
 decodeCSVTables tableHeaders =
   first toText . CSV.decodeByNameWithP (parseTablesRow tableHeaders) CSV.defaultDecodeOptions
+{-# INLINEABLE decodeCSVTables #-}
 
 decodeCSVTablesFromFile :: forall a b.(CSV.FromNamedRecord a)
                         => Map b [Text]
                         -> FilePath
                         -> IO (Either Text (CSV.Header, Vec.Vector (RawTablesRow a b)))
 decodeCSVTablesFromFile tableHeaders fp = Say.say ("decodeTablesFromCSV: loading from " <> toText fp) >> decodeCSVTables tableHeaders <$> readFileLBS fp
+{-# INLINEABLE decodeCSVTablesFromFile #-}
 
 typeOneTable' :: (Ord b, Show b, Show a, Show c) => (b -> Map c Text) -> RawTablesRow a b -> b -> Either Text (Map c Int)
 typeOneTable' tableDescription rtr@(TableRow _ cm) tableKey = do
@@ -122,14 +128,19 @@ typeOneTable' tableDescription rtr@(TableRow _ cm) tableKey = do
   if Map.size typedMap /= Map.size description
     then Left $ "Mismatch when composing maps for tableKey=" <> show tableKey <> "; counts=" <> show countMap <> "; description=" <> show description
     else Right typedMap
+{-# INLINEABLE typeOneTable' #-}
 
 typeOneTable :: (Ord b, Show b, Show a, Show c) => (b -> Map c Text) -> RawTablesRow a b -> b -> Either Text (TableRow a (Map c Int))
 typeOneTable tableDescription rtr@(TableRow p _cm) tableKey = fmap (TableRow p) $ typeOneTable' tableDescription rtr tableKey
+{-# INLINEABLE typeOneTable #-}
 
 typeAndMergeTables :: (Ord b, Array.Ix c, Show b, Show a, Show c)
                    => (b -> Map c Text) -> [b] -> RawTablesRow a b -> Either Text (TableRow a (Map c Int))
 typeAndMergeTables tableDescription tableKeys rtr@(TableRow p _) =
   TableRow p . Map.unionsWith (+) <$> traverse (typeOneTable' tableDescription rtr) tableKeys
+{-# INLINEABLE typeAndMergeTables #-}
+
+data Pair a b = Pair !a !b
 
 consolidateTables ::  forall d a b c.
                       (Ord b
@@ -142,8 +153,8 @@ consolidateTables ::  forall d a b c.
                       ) => (b -> Map c Text) -> (d -> [b]) -> RawTablesRow a b -> Either Text (TableRow a (Map (d, c) Int))
 consolidateTables tableDescription keysFrom rtr@(TableRow p _) = do
   let allD :: [d] = Set.toList BRK.elements
-      doOne d = fmap (d,) $ counts <$> typeAndMergeTables tableDescription (keysFrom d) rtr
-      remap (d, m) = Map.fromAscList $ fmap (\(c, x) -> ((d, c), x)) $ Map.toAscList m
+      doOne d = fmap (Pair d) $ counts <$> typeAndMergeTables tableDescription (keysFrom d) rtr
+      remap (Pair d m) = Map.fromAscList $ fmap (\(c, x) -> ((d, c), x)) $ Map.toAscList m
   merged <- traverse doOne allD
   let remapped = remap <$> merged
   return $ TableRow p $ Map.unions remapped
